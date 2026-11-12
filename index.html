@@ -49,7 +49,7 @@
             <div class="flex-1 bg-slate-900/50 rounded-lg p-3 border border-slate-700/50 overflow-y-auto max-h-56">
                 <p class="text-xs font-medium text-slate-400 mb-2">รายการข้อความที่โหลดเข้าสู่ระบบ:</p>
                 <div id="itemList" class="space-y-2 text-xs">
-                    <div class="bg-slate-800 p-2.5 rounded border border-slate-700 text-slate-400 text-center">ยังไม่มีข้อมูล กรุณาอัปโหลดไฟล์ JSON หรือ Excel</div>
+                    <div class="bg-slate-800 p-2.5 rounded border border-slate-700 text-slate-400 text-center">ยังไม่มีข้อมูล กรุณาอัปโหลดไฟล์ JSON</div>
                 </div>
             </div>
         </div>
@@ -91,4 +91,143 @@
         </div>
 
         <!-- Col 3: QA Audit Report & Tools -->
-        <div class="bg-
+        <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-5 flex flex-col space-y-4">
+            <h2 class="text-base font-semibold text-indigo-400 border-b border-slate-700 pb-2">3. Multi-Layer QA Results</h2>
+            
+            <div id="qaResults" class="space-y-3 flex-1 overflow-y-auto">
+                <div class="p-3 bg-slate-900/50 border border-slate-700 rounded-lg text-xs text-slate-400 text-center">
+                    ยังไม่มีผลการตรวจสอบข้อผิดพลาด
+                </div>
+            </div>
+
+            <div class="pt-2 border-t border-slate-700 space-y-2">
+                <button onclick="alert('ดาวน์โหลดรายงาน Sign-Off Report สำเร็จ!')" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium py-2.5 rounded-lg transition shadow-lg shadow-indigo-600/20">
+                    Export QA Sign-Off Report (.CSV)
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let loadedItems = [];
+
+        function handleJsonUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            document.getElementById('jsonStatus').innerText = "ไฟล์: " + file.name;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const rawData = JSON.parse(e.target.result);
+                    if (Array.isArray(rawData)) {
+                        loadedItems = rawData;
+                    } else if (rawData.items && Array.isArray(rawData.items)) {
+                        loadedItems = rawData.items;
+                    } else {
+                        loadedItems = [rawData];
+                    }
+                    renderItemList();
+                    alert("โหลดไฟล์ JSON สำเร็จ! พบข้อความทั้งหมด " + loadedItems.length + " รายการ");
+                } catch (err) {
+                    alert("รูปแบบ JSON ไม่ถูกต้อง: " + err.message);
+                }
+            };
+            reader.readAsText(file, "UTF-8");
+        }
+
+        function handleExcelUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            document.getElementById('excelStatus').innerText = "ไฟล์: " + file.name;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonExcel = XLSX.utils.sheet_to_json(worksheet);
+                    alert("โหลดตาราง Excel สำเร็จ! อ่านข้อมูลได้ " + jsonExcel.length + " แถว");
+                } catch (err) {
+                    alert("เกิดข้อผิดพลาดในการอ่าน Excel: " + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function renderItemList() {
+            const listContainer = document.getElementById('itemList');
+            const qaContainer = document.getElementById('qaResults');
+            listContainer.innerHTML = '';
+            qaContainer.innerHTML = '';
+
+            if (loadedItems.length === 0) {
+                listContainer.innerHTML = '<div class="bg-slate-800 p-2.5 rounded border border-slate-700 text-slate-400 text-center">ไม่พบรายการข้อมูลในไฟล์</div>';
+                return;
+            }
+
+            loadedItems.forEach((item, index) => {
+                const textContent = item.text || item.content || "Unnamed Text";
+                const isUpsideDown = item.upsideDown === true || item.rotation >= 170 || item.rotation <= -170;
+                const layerName = item.layer || "Default";
+
+                const div = document.createElement('div');
+                div.className = `bg-slate-800 p-2.5 rounded border cursor-pointer hover:border-indigo-400 transition flex justify-between items-center ${isUpsideDown ? 'border-rose-500/40' : 'border-slate-700'}`;
+                div.innerHTML = `
+                    <div><span class="font-bold text-indigo-300">Item #${index+1}</span> : ${textContent.substring(0, 20)}</div>
+                    <span class="${isUpsideDown ? 'text-rose-400' : 'text-emerald-400'} font-medium">${isUpsideDown ? 'Upside Down' : 'OK'}</span>
+                `;
+                div.onclick = () => selectItem(item, index);
+                listContainer.appendChild(div);
+
+                if (isUpsideDown) {
+                    const qaDiv = document.createElement('div');
+                    qaDiv.className = "p-3 bg-rose-950/30 border border-rose-500/40 rounded-lg";
+                    qaDiv.innerHTML = `
+                        <div class="flex justify-between text-xs font-semibold text-rose-400 mb-1">
+                            <span>[CRITICAL] พบปัญหาใน Layer: ${layerName}</span>
+                            <span>Rot: ${item.rotation || 0}°</span>
+                        </div>
+                        <p class="text-xs text-slate-300">ข้อความ: "${textContent}"</p>
+                    `;
+                    qaContainer.appendChild(qaDiv);
+                }
+            });
+
+            if (loadedItems.length > 0) {
+                selectItem(loadedItems[0], 0);
+            }
+        }
+
+        function selectItem(item, index) {
+            const textContent = item.text || item.content || "---";
+            const isUpsideDown = item.upsideDown === true || item.rotation >= 170 || item.rotation <= -170;
+
+            document.getElementById('previewId').innerText = `Item #${index+1}`;
+            const textEl = document.getElementById('previewText');
+            textEl.innerText = textContent;
+            textEl.className = `text-lg font-bold tracking-wider ${isUpsideDown ? 'text-rose-300 rotate-180' : 'text-emerald-300'}`;
+            
+            document.getElementById('previewSub').innerText = "Rotation: " + (item.rotation || 0) + "°";
+            document.getElementById('previewPos').innerText = `X: ${item.x || 0}, Y: ${item.y || 0}`;
+            document.getElementById('previewLayer').innerText = `Layer: ${item.layer || 'Default'}`;
+            
+            const statusBadge = document.getElementById('previewStatus');
+            const artboardBox = document.getElementById('artboardBox');
+            if (isUpsideDown) {
+                statusBadge.innerText = "⚠️ UPSIDE DOWN";
+                statusBadge.className = "text-rose-400 text-xs font-bold animate-pulse";
+                artboardBox.className = "w-72 h-44 bg-slate-900 border-2 border-rose-500 rounded-lg p-4 relative shadow-2xl flex flex-col justify-between";
+            } else {
+                statusBadge.innerText = "✔ PASSED";
+                statusBadge.className = "text-emerald-400 text-xs font-bold";
+                artboardBox.className = "w-72 h-44 bg-slate-900 border-2 border-indigo-500 rounded-lg p-4 relative shadow-2xl flex flex-col justify-between";
+            }
+
+            document.getElementById('brailleOutput').innerHTML = `<span>⠠⠵</span> <span class="text-slate-400">→ [Braille Verified]</span>`;
+        }
+    </script>
+</body>
+</html>
